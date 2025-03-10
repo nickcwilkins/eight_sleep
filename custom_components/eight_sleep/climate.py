@@ -120,6 +120,11 @@ class EightSleepThermostat(EightSleepBaseEntity, ClimateEntity):
         if self._user_obj.bed_state_type == "off":
             return HVACAction.OFF
 
+        # The device seems to always be in cooling mode even when the current temp is equal to the target temp
+        if self.target_temperature is not None and self.current_temperature is not None:
+            if self.current_temperature == self.target_temperature:
+                return HVACAction.IDLE
+
         if self._user_obj.now_heating:
             return HVACAction.HEATING
         if self._user_obj.now_cooling:
