@@ -1,19 +1,24 @@
-"""
-pyeight.user
-~~~~~~~~~~~~~~~~~~~~
-Provides user data for Eight Sleep
+"""pyeight.user Provides user data for Eight Sleep.
+
 Copyright (c) 2022-2023 <https://github.com/lukas-clarke/pyEight>
 Licensed under the MIT license.
 """
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 import logging
 import statistics
 from typing import TYPE_CHECKING, Any
 
-from .constants import APP_API_URL, DATE_FORMAT, DATE_TIME_ISO_FORMAT, CLIENT_API_URL, POSSIBLE_SLEEP_STAGES
+from .constants import (
+    APP_API_URL,
+    CLIENT_API_URL,
+    DATE_FORMAT,
+    DATE_TIME_ISO_FORMAT,
+    POSSIBLE_SLEEP_STAGES,
+)
+from .util import heating_level_to_temp
 
 if TYPE_CHECKING:
     from .eight import EightSleep
@@ -24,7 +29,7 @@ _LOGGER = logging.getLogger(__name__)
 class EightUser:  # pylint: disable=too-many-public-methods
     """Class for handling data of each eight user."""
 
-    def __init__(self, device: "EightSleep", user_id: str, side: str):
+    def __init__(self, device: EightSleep, user_id: str, side: str) -> None:
         """Initialize user class."""
         self.device = device
         self.user_id = user_id
@@ -82,7 +87,8 @@ class EightUser:  # pylint: disable=too-many-public-methods
         """Get session date for given trend."""
         if (
             len(self.trends) < trend_num + 1
-            or (session_date := self.trends[-(trend_num + 1)].get("presenceStart")) is None
+            or (session_date := self.trends[-(trend_num + 1)].get("presenceStart"))
+            is None
         ):
             return None
         return self.device.convert_string_to_datetime(session_date)
@@ -95,7 +101,8 @@ class EightUser:  # pylint: disable=too-many-public-methods
             "light": self._get_trend(trend_num, "lightDuration"),
             "deep": self._get_trend(trend_num, "deepDuration"),
             "rem": self._get_trend(trend_num, "remDuration"),
-            "awake": self._get_trend(trend_num, "presenceDuration") - self._get_trend(trend_num, "sleepDuration")
+            "awake": self._get_trend(trend_num, "presenceDuration")
+            - self._get_trend(trend_num, "sleepDuration"),
         }
         return {k: v for k, v in breakdown.items() if v is not None}
 
@@ -105,24 +112,26 @@ class EightUser:  # pylint: disable=too-many-public-methods
             return None
         return self.trends[-(trend_num + 1)].get("processing", False)
 
-    def _get_routine(self, id: str) -> dict[str, Any]:
+    def _get_routine(self, routine_id: str) -> dict[str, Any]:
         """Get routine data for the specified ID."""
         for routine in self.routines:
-            if routine["id"] == id:
+            if routine["id"] == routine_id:
                 return routine
 
-        raise Exception(f"Routine with ID {id} not found")
+        raise Exception(f"Routine with ID {routine_id} not found")
 
-    def get_alarm_enabled(self, id: str | None) -> bool:
+    def get_alarm_enabled(self, alarm_id: str | None) -> bool:
         """Get alarm enabled for the specified ID.
-        If no ID is specified, the next alarm will be used."""
-        check_next_alarm = id is None
+
+        If no ID is specified, the next alarm will be used.
+        """
+        check_next_alarm = alarm_id is None
         if check_next_alarm:
             if self.next_alarm_id:
-                id = self.next_alarm_id
+                alarm_id = self.next_alarm_id
             else:
                 return False
-        
+
         # There are two fields that represent the state of an alarm:
         #
         # "enabled" represents whether the alarm will be active next time.
@@ -134,15 +143,23 @@ class EightUser:  # pylint: disable=too-many-public-methods
         for routine in self.routines:
             if "override" in routine:
                 for alarm in routine["override"]["alarms"]:
-                    if alarm["alarmId"] == id:
-                        return alarm["enabled"] if check_next_alarm else not alarm["disabledIndividually"]
+                    if alarm["alarmId"] == alarm_id:
+                        return (
+                            alarm["enabled"]
+                            if check_next_alarm
+                            else not alarm["disabledIndividually"]
+                        )
 
             for alarm in routine["alarms"]:
-                if alarm["alarmId"] == id:
-                    return alarm["enabled"] if check_next_alarm else not alarm["disabledIndividually"]
+                if alarm["alarmId"] == alarm_id:
+                    return (
+                        alarm["enabled"]
+                        if check_next_alarm
+                        else not alarm["disabledIndividually"]
+                    )
 
-        raise Exception(f"Alarm with ID {id} not found")
-    
+        raise Exception(f"Alarm with ID {alarm_id} not found")
+
     def _get_next_alarm_routine_id(self) -> str:
         for routine in self.routines:
             if "override" in routine:
@@ -153,7 +170,7 @@ class EightUser:  # pylint: disable=too-many-public-methods
             for alarm in routine["alarms"]:
                 if alarm["alarmId"] == self.next_alarm_id:
                     return routine["id"]
-                
+
         raise Exception(f"Alarm with ID {self.next_alarm_id} not found")
 
     @property
@@ -169,13 +186,17 @@ class EightUser:  # pylint: disable=too-many-public-methods
     @property
     def base_data_for_side(self) -> dict[str, Any]:
         """Return the base data for the user's side.
-        Currently the data is identical for both sides."""
+
+        Currently the data is identical for both sides.
+        """
         return self.base_data.get(self.corrected_side_for_key, {})
 
     @property
     def base_preset(self) -> str | None:
         """Return the base preset.
-        Currently these are sleep, relaxing and reading."""
+
+        Currently these are sleep, relaxing and reading.
+        """
         return self.base_data_for_side.get("preset", {}).get("name")
 
     @property
@@ -202,10 +223,12 @@ class EightUser:  # pylint: disable=too-many-public-methods
             return False
 
         heart_rate_entry = timeseries["heartRate"][-1]
-        _LOGGER.debug(f"Last heart rate: {heart_rate_entry} for {self.user_id}")
-        heart_rate_time = datetime.fromisoformat(heart_rate_entry[0].replace('Z', '+00:00'))
+        _LOGGER.debug("Last heart rate: %s for %s", heart_rate_entry, self.user_id)
+        heart_rate_time = datetime.fromisoformat(
+            heart_rate_entry[0].replace("Z", "+00:00")
+        )
 
-        time_difference = datetime.now(timezone.utc) - heart_rate_time
+        time_difference = datetime.now(UTC) - heart_rate_time
 
         # Consider the person present if the last heart rate reading was within the last 10 minutes
         # This assumes that trend are updated every 5 minutes
@@ -232,12 +255,13 @@ class EightUser:  # pylint: disable=too-many-public-methods
             if level is not None:
                 return level
 
+        return None
+
     @property
     def corrected_side_for_key(self) -> str:
         if self.side.lower() == "solo":
             return "left"
-        else:
-            return self.side
+        return self.side
 
     def past_heating_level(self, num) -> int:
         """Return a heating level from the past."""
@@ -320,13 +344,13 @@ class EightUser:  # pylint: disable=too-many-public-methods
             return None
 
         current_trend = self.trends[-1]
-        sessions = current_trend.get('sessions', [])
+        sessions = current_trend.get("sessions", [])
 
         if not sessions:
             return None
 
         current_session = sessions[-1]
-        stages = current_session.get('stages', [])
+        stages = current_session.get("stages", [])
 
         if not stages:
             return None
@@ -335,9 +359,9 @@ class EightUser:  # pylint: disable=too-many-public-methods
         # so always pull the second to last stage while we are
         # in a processing state
         if self.current_session_processing:
-            stage = stages[-2].get('stage') if len(stages) >= 2 else None
+            stage = stages[-2].get("stage") if len(stages) >= 2 else None
         else:
-            stage = stages[-1].get('stage')
+            stage = stages[-1].get("stage")
 
         return stage
 
@@ -607,7 +631,7 @@ class EightUser:  # pylint: disable=too-many-public-methods
         local_5 = []
         local_10 = []
 
-        for i in range(0, 10):
+        for i in range(10):
             if (level := self.past_heating_level(i)) is None:
                 continue
             if level == 0:
@@ -656,14 +680,13 @@ class EightUser:  # pylint: disable=too-many-public-methods
         self.bed_state_type = await self.get_bed_state_type()
 
         current_side_temp_raw = await self.get_current_device_level()
-        self.current_side_temp = self.device.convert_raw_bed_temp_to_degrees(
-            current_side_temp_raw, "c"
-        )
+        self.current_side_temp = heating_level_to_temp(current_side_temp_raw, "c")
 
         if self.target_heating_level is None:
             self.target_heating_temp = None
         else:
-            self.target_heating_temp = self.device.convert_raw_bed_temp_to_degrees(
+            _LOGGER.debug("Target heating level: %s", self.target_heating_level)
+            self.target_heating_temp = heating_level_to_temp(
                 self.target_heating_level, "c"
             )
 
@@ -676,7 +699,7 @@ class EightUser:  # pylint: disable=too-many-public-methods
         await self.device.api_request("PUT", url, data=data, return_json=False)
 
     async def get_bed_state_type(self) -> str:
-        """Gets the bed state."""
+        """Get the bed state."""
         url = APP_API_URL + f"v1/users/{self.user_id}/temperature"
         data = await self.device.api_request("GET", url)
         return data["currentState"]["type"]
@@ -696,9 +719,10 @@ class EightUser:  # pylint: disable=too-many-public-methods
             "PUT", url, data=data_for_level
         )  # Set heating level before duration
         await self.device.api_request("PUT", url, data=data_for_duration)
+        _LOGGER.debug("Setting heating level to %s for %s", level, self.side)
 
     async def set_smart_heating_level(self, level: int, sleep_stage: str) -> None:
-        """Will set the temperature level at a smart sleep stage"""
+        """Will set the temperature level at a smart sleep stage."""
         if sleep_stage not in POSSIBLE_SLEEP_STAGES:
             raise Exception(
                 f"Invalid sleep stage {sleep_stage}. Should be one of {POSSIBLE_SLEEP_STAGES}"
@@ -777,43 +801,54 @@ class EightUser:  # pylint: disable=too-many-public-methods
         data = {"alarm": {"alarmId": self.next_alarm_id, "dismissed": True}}
         await self.device.api_request("PUT", url, data=data)
 
-    async def set_alarm_enabled(self, routine_id: str | None, alarm_id: str | None, enabled: bool) -> None:
+    async def set_alarm_enabled(
+        self, routine_id: str | None, alarm_id: str | None, enabled: bool
+    ) -> None:
         """Enables or disables the alarm.
-        If no ID is specified, the next alarm will be used."""
-        
+        If no ID is specified, the next alarm will be used.
+        """
+
         if routine_id and alarm_id:
             await self._set_alarm_enabled(routine_id, alarm_id, enabled)
             return
-        
+
         if self.next_alarm_id is None:
             # We don't do anything for now if there is no next alarm
             return
-        
+
         routine_id = self._get_next_alarm_routine_id()
         routine = self._get_routine(routine_id)
         # If there is already an override, toggle it
         if "override" in routine:
             await self._set_alarm_enabled(routine_id, self.next_alarm_id, enabled)
             return
-        
+
         # Otherwise create a new override
         for alarm in routine["alarms"]:
             if alarm["alarmId"] == self.next_alarm_id:
                 routine["override"] = {
                     "routineEnabled": True,
-                    "alarms": [{
-                        "enabled": enabled,
-                        "disabledIndividually": not enabled,
-                        "settings": alarm["settings"],
-                        "dismissUntil": alarm.get("dismissUntil"),
-                        "snoozeUntil": alarm.get("snoozeUntil"),
-                        "time": alarm["timeWithOffset"]["time"],
-                    }],
+                    "alarms": [
+                        {
+                            "enabled": enabled,
+                            "disabledIndividually": not enabled,
+                            "settings": alarm["settings"],
+                            "dismissUntil": alarm.get("dismissUntil"),
+                            "snoozeUntil": alarm.get("snoozeUntil"),
+                            "time": alarm["timeWithOffset"]["time"],
+                        }
+                    ],
                 }
-                await self.device.api_request("PUT", f"{APP_API_URL}v2/users/{self.user_id}/routines/{routine_id}", data=routine)
+                await self.device.api_request(
+                    "PUT",
+                    f"{APP_API_URL}v2/users/{self.user_id}/routines/{routine_id}",
+                    data=routine,
+                )
                 return
 
-    async def _set_alarm_enabled(self, routine_id: str, alarm_id: str, enabled: bool) -> None:
+    async def _set_alarm_enabled(
+        self, routine_id: str, alarm_id: str, enabled: bool
+    ) -> None:
         """Enables or disables the alarm with the specified ID."""
         url = APP_API_URL + f"v2/users/{self.user_id}/routines/{routine_id}"
         routine = self._get_routine(routine_id)
@@ -893,13 +928,15 @@ class EightUser:  # pylint: disable=too-many-public-methods
         if not nextTimestamp:
             self.next_alarm = None
             self.next_alarm_id = None
-            
+
             # Check if there is an upcoming routine with an alarm (which is currently disabled)
             if "upcomingRoutineId" in resp["state"]:
                 upcoming_routine = self._get_routine(resp["state"]["upcomingRoutineId"])
                 if upcoming_routine.get("override"):
                     if upcoming_routine["override"].get("alarms"):
-                        self.next_alarm_id = upcoming_routine["override"]["alarms"][0]["alarmId"]
+                        self.next_alarm_id = upcoming_routine["override"]["alarms"][0][
+                            "alarmId"
+                        ]
                 elif upcoming_routine.get("alarms"):
                     self.next_alarm_id = upcoming_routine["alarms"][0]["alarmId"]
         else:
@@ -925,7 +962,7 @@ class EightUser:  # pylint: disable=too-many-public-methods
                 "deviceOnline": True,
                 "legAngle": leg_angle,
                 "torsoAngle": torso_angle,
-                "enableOfflineMode": False
+                "enableOfflineMode": False,
             }
             await self.device.api_request("POST", url, data=payload, return_json=False)
 
@@ -942,6 +979,6 @@ class EightUser:  # pylint: disable=too-many-public-methods
                 "deviceId": self.device.device_id,
                 "deviceOnline": True,
                 "preset": preset,
-                "enableOfflineMode": False
+                "enableOfflineMode": False,
             }
             await self.device.api_request("POST", url, data=payload, return_json=False)

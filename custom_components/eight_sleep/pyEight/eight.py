@@ -1,41 +1,36 @@
-"""
-pyeight.eight
-~~~~~~~~~~~~~~~~~~~~
-Provides api for Eight Sleep
+"""Provides api for Eight Sleep.
+
 Copyright (c) 2022-2023 <https://github.com/lukas-clarke/pyEight>
 Licensed under the MIT license.
-
 """
 
 from __future__ import annotations
 
 import asyncio
 import atexit
-from datetime import datetime, timezone
-from dateutil import parser
+from datetime import UTC, datetime
 import logging
-from typing import Any
 import time
+from typing import Any
 from zoneinfo import ZoneInfo
 
-import httpx
 from aiohttp.client import ClientError, ClientSession, ClientTimeout
+from dateutil import parser
+import httpx
 
 from .constants import (
+    AUTH_URL,
+    CLIENT_API_URL,
+    DEFAULT_API_HEADERS,
+    DEFAULT_AUTH_HEADERS,
     DEFAULT_TIMEOUT,
     KNOWN_CLIENT_ID,
     KNOWN_CLIENT_SECRET,
-    AUTH_URL,
-    DEFAULT_AUTH_HEADERS,
-    CLIENT_API_URL,
-    DEFAULT_API_HEADERS,
     TOKEN_TIME_BUFFER_SECONDS,
-    RAW_TO_CELSIUS_MAP,
-    RAW_TO_FAHRENHEIT_MAP,
 )
 from .exceptions import RequestError
-from .user import EightUser
 from .structs import Token
+from .user import EightUser
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -147,30 +142,6 @@ class EightSleep:
         """Return if device has a base."""
         return self._has_base
 
-    def convert_raw_bed_temp_to_degrees(self, raw_value, degree_unit):
-        """degree_unit can be 'c' or 'f'
-        I couldn't find a constant algrebraic equation for converting
-        the raw value to degrees so I had to iterate over the whole range
-        and save a conversion map for the values."""
-        if degree_unit.lower() == "c" or degree_unit.lower() == "celsius":
-            unit_map = RAW_TO_CELSIUS_MAP
-        else:
-            unit_map = RAW_TO_FAHRENHEIT_MAP
-
-        last_raw_unit = -100
-        # Mapping the raw unit to an actual degree value
-        # Doing iterative search instead of binary for readability, and because constant size
-        for raw_unit, degree_unit in unit_map.items():
-            if raw_value == raw_unit:
-                return float(degree_unit)
-            if raw_unit > raw_value:
-                last_degree_unit = unit_map[last_raw_unit]
-                ratio = (raw_value - last_raw_unit) / (raw_unit - last_raw_unit)
-                delta_degrees = degree_unit - last_degree_unit
-                return last_degree_unit + (ratio * delta_degrees)
-            last_raw_unit = raw_unit
-        raise Exception(f"Raw value {raw_value} unable to be mapped.")
-
     def convert_string_to_datetime(self, datetime_str) -> datetime:
         try:
             # Parse the datetime string
@@ -178,7 +149,7 @@ class EightSleep:
 
             # If the datetime is naive (no timezone info), assume it's UTC
             if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
+                dt = dt.replace(tzinfo=UTC)
 
             # Convert to the desired timezone
             return dt.astimezone(ZoneInfo(self.timezone))
@@ -205,15 +176,12 @@ class EightSleep:
         )
         if response.status_code == 200:
             access_token_str = response.json()["access_token"]
-            expiration_seconds_int = (
-                float(response.json()["expires_in"]) + time.time()
-            )
+            expiration_seconds_int = float(response.json()["expires_in"]) + time.time()
             main_id = response.json()["userId"]
             return Token(access_token_str, expiration_seconds_int, main_id)
-        else:
-            raise RequestError(
-                f"Auth request failed with status code: {response.status_code}"
-            )
+        raise RequestError(
+            f"Auth request failed with status code: {response.status_code}"
+        )
 
     @property
     async def token(self) -> Token:
@@ -243,7 +211,9 @@ class EightSleep:
 
     async def update_base_data(self) -> None:
         """Update data for the bed base.
-        While it's possible to retrieve the data for each user, the contents are identical."""
+
+        While it's possible to retrieve the data for each user, the contents are identical.
+        """
         user = self.base_user
         if user:
             await user.update_base_data()
@@ -254,9 +224,11 @@ class EightSleep:
         if self.has_base:
             return next(iter(self.users.values()))
 
+        return None
+
     async def start(self) -> bool:
         """Start api initialization."""
-        _LOGGER.debug("Initializing pyEight.")
+        _LOGGER.debug("Initializing pyEight")
         if not self._api_session:
             self._api_session = ClientSession()
             self._internal_session = True
@@ -290,7 +262,9 @@ class EightSleep:
         if "elevation" in dlist["user"]["features"]:
             self._has_base = True
 
-        _LOGGER.debug(f"Devices: {self._device_ids}, Pod: {self._is_pod}, Base: {self._has_base}")
+        _LOGGER.debug(
+            f"Devices: {self._device_ids}, Pod: {self._is_pod}, Base: {self._has_base}"
+        )
 
     async def assign_users(self) -> None:
         """Update device properties."""
@@ -301,11 +275,13 @@ class EightSleep:
 
         # The API includes an awaySides key if at least one of the users is away
         # We can get the ids for the away users from there
-        ids = set([
-            data["result"].get("leftUserId"),
-            data["result"].get("rightUserId"),
-            *data["result"].get("awaySides", {}).values()
-        ])
+        ids = set(
+            [
+                data["result"].get("leftUserId"),
+                data["result"].get("rightUserId"),
+                *data["result"].get("awaySides", {}).values(),
+            ]
+        )
 
         # Get each user's side from the API
         # Create users for each unique id, including 'away' users
@@ -330,11 +306,10 @@ class EightSleep:
                     tmp = user.current_room_temp
                 else:
                     tmp = (tmp + user.current_room_temp) / 2
+            elif tmp2 is None:
+                tmp2 = user.current_room_temp
             else:
-                if tmp2 is None:
-                    tmp2 = user.current_room_temp
-                else:
-                    tmp2 = (tmp2 + user.current_room_temp) / 2
+                tmp2 = (tmp2 + user.current_room_temp) / 2
 
         if tmp is not None:
             return tmp
@@ -353,6 +328,8 @@ class EightSleep:
         device_resp = await self.api_request("get", url)
         # Want to keep last 10 readings so purge the last after we add
         self.handle_device_json(device_resp["result"])
+
+        return self._device_json_list[0]
 
     async def api_request(
         self,
@@ -388,9 +365,8 @@ class EightSleep:
                 return await self.api_request(method, url, params, data, input_headers)
             if return_json:
                 return await resp.json()
-            else:
-                return None
+            return None
 
-        except (ClientError, asyncio.TimeoutError, ConnectionRefusedError) as err:
+        except (TimeoutError, ClientError, ConnectionRefusedError) as err:
             _LOGGER.error(f"Error {method}ing Eight data. {err}s")
             raise RequestError from err

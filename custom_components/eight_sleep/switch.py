@@ -1,9 +1,8 @@
 from __future__ import annotations
-from typing import Any, Awaitable, Callable
+
+from typing import Any
 
 from custom_components.eight_sleep.pyEight.user import EightUser
-
-from .pyEight.eight import EightSleep
 
 from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription
 from homeassistant.config_entries import ConfigEntry
@@ -13,6 +12,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from . import EightSleepBaseEntity, EightSleepConfigEntryData
 from .const import DOMAIN
+from .pyEight.eight import EightSleep
 
 
 async def async_setup_entry(
@@ -33,29 +33,31 @@ async def async_setup_entry(
                     icon="mdi:alarm",
                 )
 
-                entities.append(EightSwitchEntity(
-                    entry,
-                    config_entry_data.user_coordinator,
-                    eight,
-                    user,
-                    description,
-                    alarm["alarmId"],
-                    routine["id"]))
+                entities.append(
+                    EightSwitchEntity(
+                        entry,
+                        config_entry_data.user_coordinator,
+                        eight,
+                        user,
+                        description,
+                        alarm["alarmId"],
+                        routine["id"],
+                    )
+                )
 
                 alarm_index += 1
-        
+
         description = SwitchEntityDescription(
-            key=f"next_alarm",
-            name=f"Next Alarm",
+            key="next_alarm",
+            name="Next Alarm",
             icon="mdi:alarm",
         )
 
-        entities.append(EightSwitchEntity(
-            entry,
-            config_entry_data.user_coordinator,
-            eight,
-            user,
-            description))
+        entities.append(
+            EightSwitchEntity(
+                entry, config_entry_data.user_coordinator, eight, user, description
+            )
+        )
 
     async_add_entities(entities)
 
@@ -90,18 +92,30 @@ class EightSwitchEntity(EightSleepBaseEntity, SwitchEntity):
                     if "override" in routine:
                         for alarm in routine["override"]["alarms"]:
                             if alarm["alarmId"] == alarm_id:
-                                self._attr_extra_state_attributes["time"] = alarm["time"]
+                                self._attr_extra_state_attributes["time"] = alarm[
+                                    "time"
+                                ]
                                 self._attr_extra_state_attributes["days"] = "Tonight"
-                                self._attr_extra_state_attributes["thermal"] = alarm["settings"]["thermal"]
-                                self._attr_extra_state_attributes["vibration"] = alarm["settings"]["vibration"]
+                                self._attr_extra_state_attributes["thermal"] = alarm[
+                                    "settings"
+                                ]["thermal"]
+                                self._attr_extra_state_attributes["vibration"] = alarm[
+                                    "settings"
+                                ]["vibration"]
                                 return
 
                     for alarm in routine["alarms"]:
                         if alarm["alarmId"] == alarm_id:
-                            self._attr_extra_state_attributes["time"] = alarm["timeWithOffset"]["time"]
+                            self._attr_extra_state_attributes["time"] = alarm[
+                                "timeWithOffset"
+                            ]["time"]
                             self._attr_extra_state_attributes["days"] = routine["days"]
-                            self._attr_extra_state_attributes["thermal"] = alarm["settings"]["thermal"]
-                            self._attr_extra_state_attributes["vibration"] = alarm["settings"]["vibration"]
+                            self._attr_extra_state_attributes["thermal"] = alarm[
+                                "settings"
+                            ]["thermal"]
+                            self._attr_extra_state_attributes["vibration"] = alarm[
+                                "settings"
+                            ]["vibration"]
                             return
 
         self._attr_extra_state_attributes.pop("time", None)
@@ -111,12 +125,16 @@ class EightSwitchEntity(EightSleepBaseEntity, SwitchEntity):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         if self._user_obj:
-            await self._user_obj.set_alarm_enabled(self._routine_id, self._alarm_id, True)
+            await self._user_obj.set_alarm_enabled(
+                self._routine_id, self._alarm_id, True
+            )
             await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         if self._user_obj:
-            await self._user_obj.set_alarm_enabled(self._routine_id, self._alarm_id, False)
+            await self._user_obj.set_alarm_enabled(
+                self._routine_id, self._alarm_id, False
+            )
             await self.coordinator.async_request_refresh()
 
     @callback

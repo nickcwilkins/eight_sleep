@@ -6,8 +6,6 @@ import logging
 from typing import Any
 
 from custom_components.eight_sleep.pyEight.user import EightUser
-
-from .pyEight.eight import EightSleep
 import voluptuous as vol
 
 from homeassistant.components.sensor import (
@@ -16,11 +14,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import (
-    PERCENTAGE,
-    UnitOfTemperature,
-    CONF_BINARY_SENSORS,
-)
+from homeassistant.const import CONF_BINARY_SENSORS, PERCENTAGE, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import (
     AddEntitiesCallback,
@@ -31,20 +25,21 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from . import EightSleepBaseEntity, EightSleepConfigEntryData
 from .const import (
     ATTR_DURATION,
-    ATTR_TARGET,
     ATTR_SERVICE_SLEEP_STAGE,
+    ATTR_TARGET,
     DOMAIN,
-    SERVICE_HEAT_SET,
-    SERVICE_HEAT_INCREMENT,
-    SERVICE_SIDE_OFF,
-    SERVICE_SIDE_ON,
+    NAME_MAP,
+    SERVICE_ALARM_DISMISS,
     SERVICE_ALARM_SNOOZE,
     SERVICE_ALARM_STOP,
-    SERVICE_ALARM_DISMISS,
     SERVICE_AWAY_MODE_START,
     SERVICE_AWAY_MODE_STOP,
-    NAME_MAP,
+    SERVICE_HEAT_INCREMENT,
+    SERVICE_HEAT_SET,
+    SERVICE_SIDE_OFF,
+    SERVICE_SIDE_ON,
 )
+from .pyEight.eight import EightSleep
 
 ATTR_ROOM_TEMP = "Room Temperature"
 ATTR_AVG_ROOM_TEMP = "Average Room Temperature"
@@ -61,6 +56,7 @@ ATTR_REM_PERC = f"REM Sleep {PERCENTAGE}"
 ATTR_TNT = "Tosses & Turns"
 ATTR_SLEEP_STAGE = "Sleep Stage"
 ATTR_TARGET_HEAT = "Target Heating Level"
+ATTR_TARGET_BED_TEMP = "Target Bed Temperature"
 ATTR_ACTIVE_HEAT = "Heating Active"
 ATTR_DURATION_HEAT = "Heating Time Remaining"
 ATTR_PROCESSING = "Processing"
@@ -250,7 +246,7 @@ class EightHeatSensor(EightSleepBaseEntity, SensorEntity):
 
 
 def _get_breakdown_percent(
-    attr: dict[str, Any], key: str, denominator: int | float
+    attr: dict[str, Any], key: str, denominator: float
 ) -> int | float:
     """Get a breakdown percent."""
     try:
@@ -276,7 +272,7 @@ class EightUserSensor(EightSleepBaseEntity, SensorEntity):
         eight: EightSleep,
         user: EightUser | None,
         sensor: str,
-        base_entity: bool = False
+        base_entity: bool = False,
     ) -> None:
         """Initialize the sensor."""
         super().__init__(entry, coordinator, eight, user, sensor, base_entity)
@@ -291,11 +287,7 @@ class EightUserSensor(EightSleepBaseEntity, SensorEntity):
             self._attr_native_unit_of_measurement = NAME_MAP[self._sensor].measurement
             self._attr_device_class = NAME_MAP[self._sensor].device_class
             self._attr_state_class = NAME_MAP[self._sensor].state_class
-        elif (
-            self._sensor == "sleep_stage"
-            or self._sensor == "bed_state_type"
-            or self._sensor == "side"
-        ):
+        elif self._sensor in ("sleep_stage", "bed_state_type", "side"):
             # These have string values, leave the class None
             pass
         else:
@@ -341,24 +333,22 @@ class EightUserSensor(EightSleepBaseEntity, SensorEntity):
         elif "last" in self._sensor and self._user_obj:
             attr = self._user_obj.last_values
         elif "next_alarm" in self._sensor and self._user_obj:
-            state_attr = {
+            return {
                 ATTR_ALARM_ID: self._user_obj.next_alarm_id,
             }
-            return state_attr
 
         if attr is None:
             # Skip attributes if sensor type doesn't support
             return None
 
         if "fitness" in self._sensor:
-            state_attr = {
+            return {
                 ATTR_FIT_DATE: attr["date"],
                 ATTR_FIT_DURATION_SCORE: attr["duration"],
                 ATTR_FIT_ASLEEP_SCORE: attr["asleep"],
                 ATTR_FIT_OUT_SCORE: attr["out"],
                 ATTR_FIT_WAKEUP_SCORE: attr["wakeup"],
             }
-            return state_attr
 
         state_attr = {ATTR_SESSION_START: attr["date"]}
         state_attr[ATTR_TNT] = attr["tnt"]

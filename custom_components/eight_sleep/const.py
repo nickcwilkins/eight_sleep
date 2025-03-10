@@ -1,23 +1,40 @@
+"""Eight Sleep constants."""
+
 from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 
-"""Eight Sleep constants."""
 DOMAIN = "eight_sleep"
 
 
 class NameMapEntity:
+    """Represent a mapping between API values and sensor entity attributes.
+
+    Maps internal Eight Sleep API values to Home Assistant sensor entities
+    with appropriate names, units, and classifications.
+    """
+
     def __init__(
         self,
         name: str,
         measurement: str | None = None,
         device_class: SensorDeviceClass | None = None,
-        state_class: SensorStateClass | None = SensorStateClass.MEASUREMENT
+        state_class: SensorStateClass | None = SensorStateClass.MEASUREMENT,
     ) -> None:
+        """Initialize a name map entity.
+
+        Args:
+            name: Display name of the entity
+            measurement: Unit of measurement
+            device_class: Sensor device class
+            state_class: Sensor state class, defaults to measurement
+
+        """
         self.name = name
         self.measurement = measurement
         self.device_class = device_class
         self.state_class = state_class
 
     def __str__(self) -> str:
+        """Return the display name of the entity."""
         return self.name
 
 
@@ -28,29 +45,21 @@ NAME_MAP = {
     "current_heart_rate": NameMapEntity("Heart Rate", "bpm"),
     "current_hrv": NameMapEntity("HRV", "ms"),
     "current_breath_rate": NameMapEntity("Breath Rate", "/min"),
-    "time_slept": NameMapEntity(
-        "Time Slept", "s", SensorDeviceClass.DURATION
-    ),
+    "time_slept": NameMapEntity("Time Slept", "s", SensorDeviceClass.DURATION),
     "presence_start": NameMapEntity(
-        "Presence Start",
-        device_class=SensorDeviceClass.TIMESTAMP,
-        state_class=None
+        "Presence Start", device_class=SensorDeviceClass.TIMESTAMP, state_class=None
     ),
     "presence_end": NameMapEntity(
-        "Presence End",
-        device_class=SensorDeviceClass.TIMESTAMP,
-        state_class=None
+        "Presence End", device_class=SensorDeviceClass.TIMESTAMP, state_class=None
     ),
     "next_alarm": NameMapEntity(
-        "Next Alarm",
-        device_class=SensorDeviceClass.TIMESTAMP,
-        state_class=None
+        "Next Alarm", device_class=SensorDeviceClass.TIMESTAMP, state_class=None
     ),
     "target_heating_temp": NameMapEntity(
         "Target Temperature",
         "°C",
         SensorDeviceClass.TEMPERATURE,
-        SensorStateClass.MEASUREMENT
+        SensorStateClass.MEASUREMENT,
     ),
 }
 

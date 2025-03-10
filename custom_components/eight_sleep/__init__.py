@@ -6,9 +6,6 @@ from dataclasses import dataclass
 from datetime import timedelta
 import logging
 
-from .pyEight.eight import EightSleep
-from .pyEight.exceptions import RequestError
-from .pyEight.user import EightUser
 import voluptuous as vol
 
 from homeassistant.config_entries import SOURCE_IMPORT, ConfigEntry
@@ -17,30 +14,40 @@ from homeassistant.const import (
     ATTR_MANUFACTURER,
     ATTR_MODEL,
     ATTR_SW_VERSION,
-    CONF_PASSWORD,
-    CONF_USERNAME,
     CONF_CLIENT_ID,
     CONF_CLIENT_SECRET,
+    CONF_PASSWORD,
+    CONF_USERNAME,
     Platform,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.httpx_client import get_async_client
 import homeassistant.helpers.config_validation as cv
-from homeassistant.helpers.device_registry import async_get
-from homeassistant.helpers.typing import UNDEFINED, ConfigType
 from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.httpx_client import get_async_client
+from homeassistant.helpers.typing import UNDEFINED, ConfigType
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
     DataUpdateCoordinator,
 )
 
 from .const import DOMAIN, NAME_MAP
+from .pyEight.eight import EightSleep
+from .pyEight.exceptions import RequestError
+from .pyEight.user import EightUser
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = [Platform.BINARY_SENSOR, Platform.SENSOR, Platform.NUMBER, Platform.SELECT, Platform.SWITCH]
+PLATFORMS = [
+    Platform.BINARY_SENSOR,
+    Platform.CLIMATE,
+    Platform.NUMBER,
+    Platform.SELECT,
+    Platform.SENSOR,
+    Platform.SWITCH,
+]
 
 DEVICE_SCAN_INTERVAL = timedelta(seconds=60)
 USER_SCAN_INTERVAL = timedelta(seconds=300)
@@ -72,9 +79,7 @@ class EightSleepConfigEntryData:
 
 
 def _get_device_unique_id(
-    eight: EightSleep,
-    user_obj: EightUser | None = None,
-    base_entity: bool = False
+    eight: EightSleep, user_obj: EightUser | None = None, base_entity: bool = False
 ) -> str:
     """Get the device's unique ID."""
     unique_id = eight.device_id
@@ -105,7 +110,6 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
     return True
 
-
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up the Eight Sleep config entry."""
     if CONF_CLIENT_ID in entry.data:
@@ -123,7 +127,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         client_id,
         client_secret,
         client_session=async_get_clientsession(hass),
-        httpx_client=get_async_client(hass)
+        httpx_client=get_async_client(hass),
     )
     # Authenticate, build sensors
     try:
@@ -163,7 +167,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # No users, cannot continue
         return False
 
-    dev_reg = async_get(hass)
+    dev_reg = dr.async_get(hass)
     assert eight.device_data
     device_data = {
         ATTR_MANUFACTURER: "Eight Sleep",
@@ -194,9 +198,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         base_hardware_info = eight.base_user.base_data.get("hardwareInfo", {})
         base_device_data = {
             ATTR_MANUFACTURER: "Eight Sleep",
-            ATTR_MODEL: base_hardware_info['sku'],
-            ATTR_HW_VERSION: base_hardware_info['hardwareVersion'],
-            ATTR_SW_VERSION: base_hardware_info['softwareVersion'],
+            ATTR_MODEL: base_hardware_info["sku"],
+            ATTR_HW_VERSION: base_hardware_info["hardwareVersion"],
+            ATTR_SW_VERSION: base_hardware_info["softwareVersion"],
         }
 
         dev_reg.async_get_or_create(
@@ -241,7 +245,7 @@ class EightSleepBaseEntity(CoordinatorEntity[DataUpdateCoordinator]):
         eight: EightSleep,
         user: EightUser | None,
         sensor: str,
-        base_entity: bool = False
+        base_entity: bool = False,
     ) -> None:
         """Initialize the data object."""
         super().__init__(coordinator)
